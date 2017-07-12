@@ -21,10 +21,12 @@ import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 import zipkin.internal.Nullable;
 import zipkin.storage.StorageComponent;
 
+import static zipkin.Constants.LOCAL_COMPONENT;
 import static zipkin.internal.Util.UTF_8;
 import static zipkin.internal.Util.checkNotNull;
 import static zipkin.internal.Util.equal;

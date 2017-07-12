@@ -1,5 +1,5 @@
 /**
- * Copyright 2015-2016 The OpenZipkin Authors
+ * Copyright 2015-2017 The OpenZipkin Authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
  * in compliance with the License. You may obtain a copy of the License at
@@ -32,6 +32,7 @@ import zipkin.Annotation;
 import zipkin.BinaryAnnotation;
 import zipkin.Constants;
 import zipkin.Endpoint;
+import zipkin.SimpleSpan;
 import zipkin.Span;
 import zipkin.TraceKeys;
 import zipkin.internal.Util;
@@ -50,9 +51,11 @@ public class SpanBenchmarks {
       Endpoint.builder().serviceName("app").ipv4(172 << 24 | 17 << 16 | 2).port(8080).build();
 
   final Span.Builder sharedBuilder;
+  final SimpleSpan.Builder sharedSimpleSpanBuilder;
 
   public SpanBenchmarks() {
     sharedBuilder = buildClientOnlySpan(Span.builder()).toBuilder();
+    sharedSimpleSpanBuilder = buildClientSimpleSpan().toBuilder();
   }
 
   @Benchmark
@@ -105,6 +108,34 @@ public class SpanBenchmarks {
   }
 
   @Benchmark
+  public SimpleSpan buildClientSimpleSpan() {
+    return buildClientSimpleSpan(SimpleSpan.builder());
+  }
+
+  static SimpleSpan buildClientSimpleSpan(SimpleSpan.Builder builder) {
+    return builder
+      .traceId(traceId)
+      .parentId(traceId)
+      .id(spanId)
+      .name("get")
+      .kind(SimpleSpan.Kind.CLIENT)
+      .localEndpoint(frontend)
+      .remoteEndpoint(backend)
+      .startTimestamp(1472470996199000L)
+      .finishTimestamp(1472470996199000L + 207000L)
+      .addAnnotation(1472470996238000L, Constants.WIRE_SEND)
+      .addAnnotation(1472470996403000L, Constants.WIRE_RECV)
+      .putTag(TraceKeys.HTTP_PATH, "/api")
+      .putTag("clnt/finagle.version", "6.45.0")
+      .build();
+  }
+
+  @Benchmark
+  public SimpleSpan buildClientSimpleSpan_clear() {
+    return buildClientSimpleSpan(sharedSimpleSpanBuilder.clear());
+  }
+
+  @Benchmark
   public Span buildRpcSpan() {
     return Span.builder() // web calls app
         .traceId(1L)
@@ -125,7 +156,7 @@ public class SpanBenchmarks {
   // Convenience main entry-point
   public static void main(String[] args) throws RunnerException {
     Options opt = new OptionsBuilder()
-        .include(".*" + SpanBenchmarks.class.getSimpleName() + ".*")
+        .include(".*" + SpanBenchmarks.class.getSimpleName() + ".*Client.*")
         .build();
 
     new Runner(opt).run();
