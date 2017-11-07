@@ -89,29 +89,71 @@ public class InfluxDBStorage extends StorageComponent implements SpanStore, Span
 
   @Override
   public Call<List<List<Span>>> getTraces(QueryRequest request) {
+    // TODO: spanName is optional
+    String q = String.format("SELECT * FROM \"%s\" WHERE \"service_name\" = '%s' AND \"name\" = '%s' AND time < %dms AND time > %dms",
+      this.measurement, request.serviceName(), request.spanName(), request.endTs(), request.endTs() - request.lookback());
+    StringBuilder result = new StringBuilder();
+
+    for (Iterator<Map.Entry<String, String>> i = request.annotationQuery().entrySet().iterator(); i.hasNext(); ) {
+      Map.Entry<String, String> next = i.next();
+      String k = next.getKey();
+      String v = next.getValue();
+      if (v.isEmpty()) {
+        result.append(String.format("\"annotation_key\" = '%s'", k));
+      } else {
+        result.append(String.format("(\"annotation_key\" = '%s' AND \"annotation_value\" = '%s'", k, v));
+      }
+      if (i.hasNext())
+        result.append(" and ");
+    }
+    if (result.length() > 0) {
+      q += result.toString();
+    }
+
+      q += String.format(" AND \"duration\" >= %d ", request.minDuration());
+      q += String.format(" AND \"duration\" <= %d ", request.maxDuration());
+    q += " GROUP BY \"trace_id\" ";
+    q += String.format(" SLIMIT %d ORDER BY time DESC", request.limit());
+
+    Query query = new Query(q, this.database);
+    QueryResult qresult = this.influx.query(query);
     throw new UnsupportedOperationException();
   }
 
   @Override
   public Call<List<String>> getServiceNames() {
+    String queryStr = String.format("SHOW TAG VALUES FROM \"%s\" WITH KEY = \"service_name\"", this.measurement);
+    Query query = new Query(queryStr, this.database);
+    QueryResult result = this.influx.query(query);
     throw new UnsupportedOperationException();
   }
 
   @Override
   public Call<List<DependencyLink>> getDependencies(long endTs, long lookback) {
-    //  select count("duration") from zipkin where time > now() - 30m and time < now() group by "id","parent_id", time(1d)
+    String q = String.format("SELECT COUNT(\"duration\") FROM \"%s\"", this.measurement);
+    q += String.format(" WHERE time < %dms", endTs);
+    q += String.format(" AND time > %dms ", endTs - lookback);
+    q += "GROUP BY \"id\",\"parent_id\",time(1d)";
+    Query query = new Query(q, this.database);
+    QueryResult result = this.influx.query(query);
     throw new UnsupportedOperationException();
   }
 
   @Override
   public Call<List<String>> getSpanNames(String serviceName) {
-    // show tag values with key="serviceName"
+    String q = String.format("SHOW TAG VALUES FROM \"%s\" with key=\"name\" WHERE \"service_name\" = '%s'", this.measurement, serviceName);
+    Query query = new Query(q, this.database);
+    QueryResult result = this.influx.query(query);
+    List<List<Object>> retentionPolicies = result.getResults().get(0).getSeries().get(0).getValues();
     throw new UnsupportedOperationException();
   }
 
   @Override
   public Call<List<Span>> getTrace(String traceId) {
     // SELECT * from zipkin where "trace_id"='traceId'
+    String q = String.format("SELECT * FROM \"%s\" WHERE \"trace_id\" = '%s'", this.measurement, traceId);
+    Query query = new Query(q, this.database);
+    QueryResult result = this.influx.query(query);
     throw new UnsupportedOperationException();
   }
 
