@@ -1,5 +1,5 @@
 /**
- * Copyright 2016-2017 The OpenZipkin Authors
+ * Copyright 2015-2017 The OpenZipkin Authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
  * in compliance with the License. You may obtain a copy of the License at
@@ -13,76 +13,100 @@
  */
 package zipkin.storage.influxdb;
 
+import com.google.auto.value.AutoValue;
+import com.google.auto.value.extension.memoized.Memoized;
 import org.influxdb.InfluxDB;
-import zipkin2.Call;
-import zipkin2.DependencyLink;
-import zipkin2.Span;
-import zipkin2.storage.QueryRequest;
+import org.influxdb.InfluxDBFactory;
+import zipkin2.CheckResult;
 import zipkin2.storage.SpanConsumer;
 import zipkin2.storage.SpanStore;
 import zipkin2.storage.StorageComponent;
 
-import java.util.List;
-
-public class InfluxDBStorage extends StorageComponent implements SpanStore, SpanConsumer {
+@AutoValue
+public abstract class InfluxDBStorage extends StorageComponent {
 
   public static Builder newBuilder() {
-    return new Builder();
+    return new $AutoValue_InfluxDBStorage.Builder()
+      .url("http://localhost:8086")
+      .database("zipkin")
+      .measurement("zipkin")
+      .username("root")
+      .password("")
+      .retentionPolicy("zipkin")
+      .strictTraceId(true);
   }
 
-  public static final class Builder extends StorageComponent.Builder {
-    boolean strictTraceId = true;
-    String address;
-    String password;
-    String username;
-    String retentionPolicy;
-    String database;
-    String measurement;
+  abstract Builder toBuilder();
 
-    /**
-     * {@inheritDoc}
-     */
-    @Override
-    public Builder strictTraceId(boolean strictTraceId) {
-      this.strictTraceId = strictTraceId;
-      return this;
-    }
+  @AutoValue.Builder
+  public static abstract class Builder extends StorageComponent.Builder {
 
-    public Builder address(String address) {
-      this.address = address;
-      return this;
-    }
-    public Builder password(String password) {
-      this.password = password;
-      return this;
-    }
-    public Builder username(String username) {
-      this.username = username;
-      return this;
-    }
-    public Builder retentionPolicy(String retentionPolicy) {
-      this.retentionPolicy = retentionPolicy;
-      return this;
-    }
-    public Builder database(String database) {
-      this.database = database;
-      return this;
-    }
-    public Builder measurement(String measurement) {
-      this.measurement = measurement;
-      return this;
-    }
+    public abstract Builder url(String url);
 
-    @Override
-    public InfluxDBStorage build() {
-      return new InfluxDBStorage();
-    }
+    public abstract Builder database(String database);
+
+    public abstract Builder measurement(String measurement);
+
+    public abstract Builder username(String username);
+
+    public abstract Builder password(String password);
+
+    public abstract Builder retentionPolicy(String retentionPolicy);
+
+    @Override public abstract Builder strictTraceId(boolean strictTraceId);
+
+    public abstract InfluxDBStorage build();
 
     Builder() {
     }
   }
 
-  @Override
+  abstract String url();
+
+  abstract String database();
+
+  abstract String measurement();
+
+  abstract String username();
+
+  abstract String password();
+
+  abstract String retentionPolicy();
+
+  abstract boolean strictTraceId();
+
+  /** get and close are typically called from different threads */
+  volatile boolean provisioned, closeCalled;
+
+  @Override public SpanStore spanStore() {
+    return new InfluxDBSpanStore(this);
+  }
+
+  @Override public SpanConsumer spanConsumer() {
+    return new InfluxDBSpanConsumer(this);
+  }
+
+  @Override public CheckResult check() {
+    try {
+      get().ping();
+      return CheckResult.OK;
+    } catch (RuntimeException e) {
+      return CheckResult.failed(e);
+    }
+  }
+
+  @Memoized InfluxDB get() {
+    InfluxDB result = InfluxDBFactory.connect(url(), username(), password());
+    provisioned = true;
+    return result;
+  }
+
+  @Override public synchronized void close() {
+    if (closeCalled) return;
+    if (provisioned) get().close();
+    closeCalled = true;
+  }
+ @Override
   public Call<Void> accept(List<Span> spans) {
     throw new UnsupportedOperationException();
   }
@@ -110,8 +134,8 @@ public class InfluxDBStorage extends StorageComponent implements SpanStore, Span
       q += result.toString();
     }
 
-      q += String.format(" AND \"duration\" >= %d ", request.minDuration());
-      q += String.format(" AND \"duration\" <= %d ", request.maxDuration());
+    q += String.format(" AND \"duration\" >= %d ", request.minDuration());
+    q += String.format(" AND \"duration\" <= %d ", request.maxDuration());
     q += " GROUP BY \"trace_id\" ";
     q += String.format(" SLIMIT %d ORDER BY time DESC", request.limit());
 
@@ -156,17 +180,7 @@ public class InfluxDBStorage extends StorageComponent implements SpanStore, Span
     QueryResult result = this.influx.query(query);
     throw new UnsupportedOperationException();
   }
-
-  @Override
-  public SpanStore spanStore() {
-    throw new UnsupportedOperationException();
-  }
-
-  @Override
-  public SpanConsumer spanConsumer() {
-    throw new UnsupportedOperationException();
-  }
-
+  
   InfluxDBStorage() {
   }
 }
