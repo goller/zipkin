@@ -173,20 +173,23 @@ final class InfluxDBSpanStore implements SpanStore {
     String q =
       String.format("SHOW TAG VALUES FROM \"%s\" WITH KEY = \"service_name\"",
       this.storage.measurement());
-    Query query = new Query(Query.encode(q), this.storage.database());
-    QueryResult result = this.storage.get().query(query);
-    if (result.hasError()){
-      throw new RuntimeException(result.getError());
+    Query query = new Query(q, this.storage.database());
+    QueryResult response = this.storage.get().query(query);
+    if (response.hasError()){
+      throw new RuntimeException(response.getError());
     }
 
-    List<List<Object>> serviceNames =
-      result.getResults().get(0).getSeries().get(0).getValues();
     List<String> services = new ArrayList<>();
-    if (serviceNames != null) {
-      for (List<Object> service : serviceNames) {
-        services.add(service.get(0).toString());
+    for (QueryResult.Result result: response.getResults()){
+      for (QueryResult.Series series : result.getSeries()){
+        for (List<Object> values: series.getValues()) {
+          for (Object value: values){
+            services.add(value.toString());
+          }
+        }
       }
     }
+
     return Call.create(services);
   }
 
@@ -195,21 +198,24 @@ final class InfluxDBSpanStore implements SpanStore {
     String q =
       String.format("SHOW TAG VALUES FROM \"%s\" with key=\"name\" WHERE \"service_name\" = '%s'",
       this.storage.measurement(), serviceName);
-    Query query = new Query(Query.encode(q), this.storage.database());
-    QueryResult result = this.storage.get().query(query);
-    if (result.hasError()){
-      throw new RuntimeException(result.getError());
+    Query query = new Query(q, this.storage.database());
+    QueryResult response = this.storage.get().query(query);
+    if (response.hasError()){
+      throw new RuntimeException(response.getError());
     }
 
-    List<List<Object>> serviceNames =
-      result.getResults().get(0).getSeries().get(0).getValues();
-    List<String> services = new ArrayList<>();
-    if (serviceNames != null) {
-      for (List<Object> service : serviceNames) {
-        services.add(service.get(0).toString());
+    List<String> spans = new ArrayList<>();
+    for (QueryResult.Result result: response.getResults()){
+      for (QueryResult.Series series : result.getSeries()){
+        for (List<Object> values: series.getValues()) {
+          for (Object value: values){
+            spans.add(value.toString());
+          }
+        }
       }
     }
-    return Call.create(services);
+
+    return Call.create(spans);
   }
 
   @Override public Call<List<DependencyLink>> getDependencies(long endTs, long lookback) {
