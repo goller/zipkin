@@ -159,7 +159,7 @@
       <optional>true</optional>
     </dependency>
 
-    <!-- InfluxDB HTTP backend -->
+    <!-- InfluxDB backend -->
     <dependency>
       <groupId>${project.groupId}</groupId>
       <artifactId>zipkin-autoconfigure-storage-influxdb</artifactId>
